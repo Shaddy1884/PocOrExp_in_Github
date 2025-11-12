@@ -3,7 +3,7 @@ name: Sync upstream -> create PR
 on:
   schedule:
     - cron: '0 3 * * *'        # 每日 03:00 UTC 自动运行
-  workflow_dispatch: {}        # 支持手动触发
+  workflow_dispatch: {}        # 手动触发
 
 permissions:
   contents: write
@@ -13,21 +13,21 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout upstream repo (read only)
+      - name: Checkout upstream repo
         uses: actions/checkout@v4
         with:
           repository: ycdxsb/PocOrExp_in_Github
           path: upstream
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
-      - name: Checkout fork (target)
+      - name: Checkout your fork
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository }}
           path: fork
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
-      - name: Sync files from upstream to fork (exclude workflows)
+      - name: Sync files from upstream to fork
         run: |
           rsync -av --delete --exclude='.git' --exclude='.github/workflows/*' upstream/ fork/
           cd fork
@@ -38,16 +38,16 @@ jobs:
             echo "No changes to sync"
             exit 0
           fi
-          git commit -m "chore(sync): sync from upstream ycdxsb/PocOrExp_in_Github at $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-          git push origin HEAD:sync/upstream-sync --force
+          git commit -m "chore(sync): update from upstream $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          commit-message: "chore(sync): sync from upstream at $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-          title: "Sync from upstream ycdxsb/PocOrExp_in_Github"
-          body: "Automated sync from upstream repository."
+          path: fork
+          branch: sync/upstream-sync      # ✅ 新参数替代 head
           base: main
-          branch: sync/upstream-sync     # ✅ 新版字段
+          title: "Sync from upstream ycdxsb/PocOrExp_in_Github"
+          body: "Automated synchronization from upstream."
+          commit-message: "chore(sync): update from upstream"
           labels: "sync, automated"
