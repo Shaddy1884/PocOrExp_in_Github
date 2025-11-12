@@ -1,9 +1,9 @@
-name: Sync upstream -> create PR
+name: Upstream Sync & Auto Merge
 
 on:
   schedule:
     - cron: '0 3 * * *'        # 每日 03:00 UTC 自动运行
-  workflow_dispatch: {}        # 手动触发
+  workflow_dispatch: {}        # 支持手动触发
 
 permissions:
   contents: write
@@ -12,7 +12,9 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
+
     steps:
+      # 1️⃣ Checkout upstream repo (上游)
       - name: Checkout upstream repo
         uses: actions/checkout@v4
         with:
@@ -20,6 +22,7 @@ jobs:
           path: upstream
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
+      # 2️⃣ Checkout your fork (目标)
       - name: Checkout your fork
         uses: actions/checkout@v4
         with:
@@ -27,27 +30,70 @@ jobs:
           path: fork
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
+      # 3️⃣ Rsync 差异并提交
       - name: Sync files from upstream to fork
         run: |
+          echo "=== 开始同步 upstream → fork ==="
           rsync -av --delete --exclude='.git' --exclude='.github/workflows/*' upstream/ fork/
           cd fork
           git config user.name "github-actions[bot]"
           git config user.email "actions@github.com"
+
+          echo "=== 检查差异 ==="
+          git status
           git add -A
           if git diff --cached --quiet; then
-            echo "No changes to sync"
+            echo "✅ 没有检测到变更，fork 已与 upstream 完全一致。"
+            echo "::notice title=Sync Result::✅ 无更新 — Fork 已是最新版本。"
             exit 0
           fi
+
+          echo "🟢 检测到变更，准备提交..."
           git commit -m "chore(sync): update from upstream $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 
+      # 4️⃣ 创建 PR
       - name: Create Pull Request
+        id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           path: fork
-          branch: sync/upstream-sync      # ✅ 新参数替代 head
+          branch: sync/upstream-sync
           base: main
           title: "Sync from upstream ycdxsb/PocOrExp_in_Github"
-          body: "Automated synchronization from upstream."
+          body: |
+            Automated synchronization from upstream repository.
+
+            Triggered by workflow **${{ github.workflow }}** at ${{ github.event_name }}.
           commit-message: "chore(sync): update from upstream"
           labels: "sync, automated"
+
+      # 5️⃣ 输出 PR 链接或提示
+      - name: Print PR link or notice
+        run: |
+          if [ "${{ steps.cpr.outputs.pull-request-number }}" != "" ]; then
+            echo "🟢 已创建 PR #${{ steps.cpr.outputs.pull-request-number }}："
+            echo "🔗 ${{ steps.cpr.outputs.pull-request-url }}"
+            echo "::notice title=PR Created::🟢 Pull Request 已创建: ${{ steps.cpr.outputs.pull-request-url }}"
+          else
+            echo "✅ 没有检测到变更或 PR 已存在。"
+            echo "::notice title=Sync Result::✅ 无需创建 PR。"
+          fi
+
+      # 6️⃣ 自动合并（若 PR 存在且无冲突）
+      - name: Auto merge PR if clean
+        if: ${{ steps.cpr.outputs.pull-request-number != '' }}
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
+          merge-method: squash   # 也可改为 merge/rebase
+
+      # 7️⃣ 清理已合并分支
+      - name: Delete branch after merge
+        if: ${{ steps.cpr.outputs.pull-request-number != '' }}
+        run: |
+          echo "🧹 清理同步分支 sync/upstream-sync ..."
+          gh pr merge ${{ steps.cpr.outputs.pull-request-number }} --squash --delete-branch --auto --repo "${{ github.repository }}"
+        env:
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
