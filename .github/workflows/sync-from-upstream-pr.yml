@@ -42,12 +42,12 @@ jobs:
           git push origin HEAD:sync/upstream-sync --force
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           commit-message: "chore(sync): sync from upstream at $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
           title: "Sync from upstream ycdxsb/PocOrExp_in_Github"
           body: "Automated sync from upstream repository."
           base: main
-          head: sync/upstream-sync
+          branch: sync/upstream-sync     # ✅ 新版字段
           labels: "sync, automated"
