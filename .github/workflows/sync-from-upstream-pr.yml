@@ -1,0 +1,53 @@
+name: Sync upstream -> create PR
+
+on:
+  schedule:
+    - cron: '0 3 * * *'        # 每日 03:00 UTC 自动运行
+  workflow_dispatch: {}        # 支持手动触发
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout upstream repo (read only)
+        uses: actions/checkout@v4
+        with:
+          repository: ycdxsb/PocOrExp_in_Github
+          path: upstream
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      - name: Checkout fork (target)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          path: fork
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      - name: Sync files from upstream to fork (exclude workflows)
+        run: |
+          rsync -av --delete --exclude='.git' --exclude='.github/workflows/*' upstream/ fork/
+          cd fork
+          git config user.name "github-actions[bot]"
+          git config user.email "actions@github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to sync"
+            exit 0
+          fi
+          git commit -m "chore(sync): sync from upstream ycdxsb/PocOrExp_in_Github at $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          git push origin HEAD:sync/upstream-sync --force
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          commit-message: "chore(sync): sync from upstream at $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          title: "Sync from upstream ycdxsb/PocOrExp_in_Github"
+          body: "Automated sync from upstream repository."
+          base: main
+          head: sync/upstream-sync
+          labels: "sync, automated"
